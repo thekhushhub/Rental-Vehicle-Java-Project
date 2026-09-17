@@ -63,15 +63,19 @@ public class VehicleRentalApp {
     }
  
     public static Connection getConnection() throws SQLException {
+        return DriverManager.getConnection(DB_URL, DB_USER, DB_PASS);
+    }
+ 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
             } catch (Exception ignored) {}
             applyGlobalFonts();
+            showLoginDialog();
         });
     }
-
+ 
     private static void applyGlobalFonts() {
         Font base = f(Font.PLAIN, 13);
         String[] keys = {"Label.font", "TextField.font", "PasswordField.font", "ComboBox.font", "CheckBox.font",
@@ -81,7 +85,6 @@ public class VehicleRentalApp {
         UIManager.put("TableHeader.font", f(Font.BOLD, 12));
     }
  
-
     // ==========================================
     // UI TOOLKIT (reusable styled components)
     // ==========================================
