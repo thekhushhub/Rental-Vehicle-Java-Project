@@ -191,6 +191,180 @@ public class VehicleRentalApp {
         }
     }
  
+    static class StatCard extends JPanel {
+        private final JLabel value = new JLabel();
+        private final Color accent;
+ 
+        StatCard(String title, String initial, Color accent) {
+            this.accent = accent;
+            setLayout(new BorderLayout(0, 6));
+            setOpaque(false);
+            setBorder(new EmptyBorder(18, 26, 18, 18));
+            JLabel t = new JLabel(title.toUpperCase());
+            t.setFont(f(Font.BOLD, 11));
+            t.setForeground(MUTED);
+            value.setText(initial);
+            value.setFont(f(Font.BOLD, 28));
+            value.setForeground(TEXT);
+            add(t, BorderLayout.NORTH);
+            add(value, BorderLayout.CENTER);
+        }
+ 
+        void setValue(String s) { value.setText(s); }
+ 
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(15, 30, 60, 14));
+            g2.fillRoundRect(1, 3, getWidth() - 2, getHeight() - 3, 18, 18);
+            g2.setColor(accent);
+            g2.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 3, 18, 18);
+            g2.setColor(Color.WHITE);
+            g2.fillRoundRect(7, 0, getWidth() - 8, getHeight() - 3, 18, 18);
+            g2.dispose();
+            super.paintComponent(g);
+        }
+    }
+ 
+    // ---------- Table renderers ----------
+    static class HeaderRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
+            JLabel l = (JLabel) super.getTableCellRendererComponent(t, v, sel, foc, row, col);
+            l.setBackground(new Color(30, 50, 90));
+            l.setForeground(Color.WHITE);
+            l.setFont(f(Font.BOLD, 12));
+            l.setBorder(new EmptyBorder(0, 10, 0, 10));
+            l.setHorizontalAlignment(SwingConstants.LEFT);
+            l.setOpaque(true);
+            return l;
+        }
+    }
+ 
+    static class CellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
+            Object shown = v;
+            if (v instanceof Double) shown = String.format("%,.2f", (Double) v);
+            JLabel l = (JLabel) super.getTableCellRendererComponent(t, shown, sel, false, row, col);
+            l.setBorder(new EmptyBorder(0, 10, 0, 10));
+            l.setHorizontalAlignment(SwingConstants.LEFT);
+            l.setForeground(TEXT);
+            l.setBackground(sel ? ROW_SELECT : (row % 2 == 0 ? Color.WHITE : ROW_ALT));
+            return l;
+        }
+    }
+ 
+    static Color[] statusColors(String s) {
+        String x = s == null ? "" : s.toLowerCase();
+        if (x.equals("available") || x.equals("active")) return new Color[]{new Color(220, 252, 231), new Color(21, 128, 61)};
+        if (x.equals("rented")) return new Color[]{new Color(219, 234, 254), new Color(29, 78, 216)};
+        if (x.equals("under maintenance")) return new Color[]{new Color(254, 243, 199), new Color(180, 83, 9)};
+        if (x.equals("reserved")) return new Color[]{new Color(237, 233, 254), new Color(109, 40, 217)};
+        if (x.equals("cancelled") || x.equals("inactive")) return new Color[]{new Color(254, 226, 226), new Color(185, 28, 28)};
+        if (x.equals("returned")) return new Color[]{new Color(226, 232, 240), new Color(51, 65, 85)};
+        return new Color[]{new Color(226, 232, 240), new Color(51, 65, 85)};
+    }
+ 
+    static class StatusRenderer extends DefaultTableCellRenderer {
+        private Color pill = Color.LIGHT_GRAY;
+ 
+        @Override
+        public Component getTableCellRendererComponent(JTable t, Object v, boolean sel, boolean foc, int row, int col) {
+            JLabel l = (JLabel) super.getTableCellRendererComponent(t, v, sel, false, row, col);
+            Color[] c = statusColors(v == null ? "" : v.toString());
+            pill = c[0];
+            l.setForeground(c[1]);
+            l.setFont(f(Font.BOLD, 12));
+            l.setHorizontalAlignment(SwingConstants.CENTER);
+            l.setBackground(sel ? ROW_SELECT : (row % 2 == 0 ? Color.WHITE : ROW_ALT));
+            return l;
+        }
+ 
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(getBackground());
+            g2.fillRect(0, 0, getWidth(), getHeight());
+            String text = getText() == null ? "" : getText();
+            FontMetrics fm = g2.getFontMetrics(getFont());
+            int tw = fm.stringWidth(text) + 26;
+            int th = 22;
+            int x = (getWidth() - tw) / 2;
+            int y = (getHeight() - th) / 2;
+            g2.setColor(pill);
+            g2.fillRoundRect(x, y, tw, th, 22, 22);
+            g2.setColor(getForeground());
+            g2.setFont(getFont());
+            g2.drawString(text, x + 13, y + (th + fm.getAscent() - fm.getDescent()) / 2);
+            g2.dispose();
+        }
+    }
+ 
+    // ---------- Component factories ----------
+    private static JTable makeTable(DefaultTableModel model) {
+        JTable t = new JTable(model);
+        t.setRowHeight(34);
+        t.setFont(f(Font.PLAIN, 13));
+        t.setForeground(TEXT);
+        t.setShowVerticalLines(false);
+        t.setShowHorizontalLines(true);
+        t.setGridColor(new Color(236, 240, 246));
+        t.setIntercellSpacing(new Dimension(0, 1));
+        t.setSelectionBackground(ROW_SELECT);
+        t.setSelectionForeground(TEXT);
+        t.setFillsViewportHeight(true);
+        t.setAutoResizeMode(JTable.AUTO_RESIZE_ALL_COLUMNS);
+ 
+        JTableHeader h = t.getTableHeader();
+        h.setReorderingAllowed(false);
+        h.setPreferredSize(new Dimension(0, 38));
+        h.setDefaultRenderer(new HeaderRenderer());
+ 
+        CellRenderer cr = new CellRenderer();
+        t.setDefaultRenderer(Object.class, cr);
+        t.setDefaultRenderer(Number.class, cr);
+        t.setDefaultRenderer(Integer.class, cr);
+        t.setDefaultRenderer(Double.class, cr);
+        t.setDefaultRenderer(String.class, cr);
+ 
+        for (int i = 0; i < model.getColumnCount(); i++) {
+            if ("Status".equals(model.getColumnName(i))) {
+                t.getColumnModel().getColumn(i).setCellRenderer(new StatusRenderer());
+            }
+        }
+        return t;
+    }
+ 
+    private static JScrollPane scroll(JComponent c) {
+        JScrollPane sp = new JScrollPane(c);
+        sp.setBorder(new LineBorder(BORDER_C, 1));
+        sp.getViewport().setBackground(Color.WHITE);
+        sp.getVerticalScrollBar().setUnitIncrement(16);
+        return sp;
+    }
+ 
+    private static JLabel lbl(String text) {
+        JLabel l = new JLabel(text);
+        l.setFont(f(Font.BOLD, 12));
+        l.setForeground(MUTED);
+        return l;
+    }
+ 
+    private static JLabel heading(String text) {
+        JLabel l = new JLabel(text);
+        l.setFont(f(Font.BOLD, 15));
+        l.setForeground(TEXT);
+        return l;
+    }
+ 
+    private static void styleField(JTextField t) {
+        t.setFont(f(Font.PLAIN, 13));
+        t.setForeground(TEXT);
+        t.setBackground(Color.WHITE);
+        final javax.swing.border.Border normal = BorderFactory.createCompoundBorder(
                 new LineBorder(BORDER_C, 1, true), new EmptyBorder(7, 10, 7, 10));
         final javax.swing.border.Border focus = BorderFactory.createCompoundBorder(
                 new LineBorder(PRIMARY, 2, true), new EmptyBorder(6, 9, 6, 9));
@@ -452,5 +626,247 @@ public class VehicleRentalApp {
         loginDialog.setVisible(true);
     }
  
+    // ==========================================
+    // 2. MAIN APPLICATION FRAME & NAVIGATION
+    // ==========================================
+    private static void showMainAdminPanel() {
+        JFrame frame = new JFrame("Vehicle Rental System | User: " + loggedInUser + " (" + loggedInRole + ")");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(1280, 800);
+        frame.setMinimumSize(new Dimension(1100, 700));
+        frame.setLocationRelativeTo(null);
+ 
+        JPanel root = new JPanel(new BorderLayout());
+        root.setBackground(BG);
+ 
+        // ----- Pages (created in the same order as before) -----
+        Map<String, JPanel> pages = new LinkedHashMap<>();
+        Map<String, String> subtitles = new HashMap<>();
+        pages.put("Dashboard", createDashboardPanel());
+        subtitles.put("Dashboard", "Live overview of your fleet, rentals and revenue");
+        pages.put("Vehicles", createVehiclePanel());
+        subtitles.put("Vehicles", "Add, update and track every vehicle in your fleet");
+        pages.put("Categories", createCategoryPanel());
+        subtitles.put("Categories", "Organise vehicles into categories");
+        pages.put("Customers", createCustomerPanel());
+        subtitles.put("Customers", "Register and manage your customers");
+        pages.put("Rentals & Bookings", createRentalPanel());
+        subtitles.put("Rentals & Bookings", "Create new bookings and manage existing ones");
+        pages.put("Returns & Invoicing", createReturnPanel());
+        subtitles.put("Returns & Invoicing", "Process vehicle returns and generate invoices");
+        pages.put("Maintenance", createMaintenancePanel());
+        subtitles.put("Maintenance", "Log services and repairs for your vehicles");
+        pages.put("Alerts & Notifications", createAlertsPanel());
+        subtitles.put("Alerts & Notifications", "Overdue returns, due-today returns and workshop status");
+        pages.put("Reports", createReportsPanel());
+        subtitles.put("Reports", "Financial, maintenance and fleet reports");
+        if ("Admin".equalsIgnoreCase(loggedInRole)) {
+            pages.put("Staff Management", createStaffPanel());
+            subtitles.put("Staff Management", "Create staff accounts and control access");
+            pages.put("System Settings", createSettingsPanel());
+            subtitles.put("System Settings", "Company name, tax and late fee configuration");
+        }
+ 
+        CardLayout cards = new CardLayout();
+        JPanel content = new JPanel(cards);
+        content.setOpaque(false);
+        content.setBorder(new EmptyBorder(6, 22, 20, 22));
+ 
+        // ----- Page header -----
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(BG);
+        header.setBorder(new EmptyBorder(18, 26, 6, 26));
+        JPanel titleBox = new JPanel();
+        titleBox.setOpaque(false);
+        titleBox.setLayout(new BoxLayout(titleBox, BoxLayout.Y_AXIS));
+        JLabel lblPageTitle = new JLabel("Dashboard");
+        lblPageTitle.setFont(f(Font.BOLD, 24));
+        lblPageTitle.setForeground(TEXT);
+        JLabel lblPageSub = new JLabel(" ");
+        lblPageSub.setFont(f(Font.PLAIN, 13));
+        lblPageSub.setForeground(MUTED);
+        titleBox.add(lblPageTitle);
+        titleBox.add(lblPageSub);
+        JLabel lblDate = new JLabel(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, dd MMM yyyy")));
+        lblDate.setFont(f(Font.BOLD, 13));
+        lblDate.setForeground(MUTED);
+        header.add(titleBox, BorderLayout.WEST);
+        header.add(lblDate, BorderLayout.EAST);
+ 
+        // ----- Sidebar -----
+        JPanel sidebar = new JPanel(new BorderLayout());
+        sidebar.setBackground(SIDEBAR);
+        sidebar.setPreferredSize(new Dimension(250, 0));
+ 
+        JPanel brand = new JPanel();
+        brand.setOpaque(false);
+        brand.setLayout(new BoxLayout(brand, BoxLayout.Y_AXIS));
+        brand.setBorder(new EmptyBorder(24, 22, 18, 10));
+        JLabel brandTitle = new JLabel("Vehicle Rental");
+        brandTitle.setFont(f(Font.BOLD, 20));
+        brandTitle.setForeground(Color.WHITE);
+        JLabel brandSub = new JLabel("Management System");
+        brandSub.setFont(f(Font.PLAIN, 12));
+        brandSub.setForeground(new Color(147, 197, 253));
+        brand.add(brandTitle);
+        brand.add(brandSub);
+        sidebar.add(brand, BorderLayout.NORTH);
+ 
+        JPanel navPanel = new JPanel();
+        navPanel.setLayout(new BoxLayout(navPanel, BoxLayout.Y_AXIS));
+        navPanel.setBackground(SIDEBAR);
+        navPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
+ 
+        List<NavButton> navButtons = new ArrayList<>();
+ 
+        // Page switching + AUTO-SYNC DATA (same logic as the original tab listener)
+        java.util.function.Consumer<String> showPage = title -> {
+            cards.show(content, title);
+            lblPageTitle.setText(title);
+            lblPageSub.setText(subtitles.get(title));
+            for (NavButton nb : navButtons) nb.setSelectedNav(nb.getText().equals(title));
+ 
+            if ("Dashboard".equals(title) && refreshDashboardTab != null) refreshDashboardTab.run();
+            if ("Vehicles".equals(title) && refreshVehiclesTab != null) refreshVehiclesTab.run();
+            if ("Customers".equals(title) && refreshCustomersTab != null) refreshCustomersTab.run();
+            if ("Rentals & Bookings".equals(title) && refreshRentalsTab != null) refreshRentalsTab.run();
+            if ("Returns & Invoicing".equals(title) && refreshReturnsTab != null) refreshReturnsTab.run();
+            if ("Maintenance".equals(title) && refreshMaintenanceTab != null) refreshMaintenanceTab.run();
+            if ("Alerts & Notifications".equals(title) && refreshAlertsTab != null) refreshAlertsTab.run();
+        };
+ 
+        for (Map.Entry<String, JPanel> entry : pages.entrySet()) {
+            String title = entry.getKey();
+            content.add(entry.getValue(), title);
+            NavButton nb = new NavButton(title);
+            nb.addActionListener(e -> showPage.accept(title));
+            navButtons.add(nb);
+            navPanel.add(nb);
+        }
+ 
+        JScrollPane navScroll = new JScrollPane(navPanel);
+        navScroll.setBorder(null);
+        navScroll.getViewport().setBackground(SIDEBAR);
+        navScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        sidebar.add(navScroll, BorderLayout.CENTER);
+ 
+        // ----- Sidebar footer: user info + quick actions -----
+        JPanel userBox = new JPanel();
+        userBox.setOpaque(false);
+        userBox.setLayout(new BoxLayout(userBox, BoxLayout.Y_AXIS));
+        userBox.setBorder(new EmptyBorder(14, 18, 18, 18));
+        JLabel lblUserInfo = new JLabel("Logged in as: " + loggedInUser);
+        lblUserInfo.setFont(f(Font.BOLD, 13));
+        lblUserInfo.setForeground(Color.WHITE);
+        JLabel lblRole = new JLabel("Role: " + loggedInRole);
+        lblRole.setFont(f(Font.PLAIN, 12));
+        lblRole.setForeground(new Color(147, 197, 253));
+        JButton btnChangePass = btn("Change Password", PRIMARY);
+        JButton btnLogout = btn("Logout", DANGER);
+        btnChangePass.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnLogout.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnChangePass.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        btnLogout.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
+        lblUserInfo.setAlignmentX(Component.LEFT_ALIGNMENT);
+        lblRole.setAlignmentX(Component.LEFT_ALIGNMENT);
+        userBox.add(lblUserInfo);
+        userBox.add(lblRole);
+        userBox.add(Box.createVerticalStrut(12));
+        userBox.add(btnChangePass);
+        userBox.add(Box.createVerticalStrut(8));
+        userBox.add(btnLogout);
+        sidebar.add(userBox, BorderLayout.SOUTH);
+ 
+        btnChangePass.addActionListener(e -> showChangePasswordDialog(frame));
+        btnLogout.addActionListener(e -> {
+            frame.dispose();
+            showLoginDialog();
+        });
+ 
+        JPanel center = new JPanel(new BorderLayout());
+        center.setBackground(BG);
+        center.add(header, BorderLayout.NORTH);
+        center.add(content, BorderLayout.CENTER);
+ 
+        root.add(sidebar, BorderLayout.WEST);
+        root.add(center, BorderLayout.CENTER);
+        frame.setContentPane(root);
+ 
+        showPage.accept("Dashboard");
+        frame.setVisible(true);
+    }
+ 
+    // ==========================================
+    // 3. CHANGE PASSWORD DIALOG
+    // ==========================================
+    private static void showChangePasswordDialog(JFrame parent) {
+        JDialog dlg = new JDialog(parent, "Change Password", true);
+        dlg.setSize(420, 300);
+        dlg.setResizable(false);
+        dlg.setLocationRelativeTo(parent);
+ 
+        JPanel body = new JPanel(new BorderLayout(0, 14));
+        body.setBackground(Color.WHITE);
+        body.setBorder(new EmptyBorder(22, 28, 22, 28));
+ 
+        JLabel title = new JLabel("Change Password");
+        title.setFont(f(Font.BOLD, 20));
+        title.setForeground(TEXT);
+ 
+        JPasswordField txtOld = pf("");
+        JPasswordField txtNew = pf("");
+        JButton btnSubmit = btn("Update Password", PRIMARY);
+        JButton btnCancel = btn("Cancel", NEUTRAL);
+ 
+        // label stacked above each field for a cleaner look
+        JPanel stacked = new JPanel(new GridLayout(4, 1, 0, 4));
+        stacked.setOpaque(false);
+        stacked.add(lbl("CURRENT PASSWORD"));
+        stacked.add(txtOld);
+        stacked.add(lbl("NEW PASSWORD"));
+        stacked.add(txtNew);
+ 
+        body.add(title, BorderLayout.NORTH);
+        body.add(stacked, BorderLayout.CENTER);
+        body.add(actionRow(btnCancel, btnSubmit), BorderLayout.SOUTH);
+        dlg.setContentPane(body);
+        dlg.getRootPane().setDefaultButton(btnSubmit);
+ 
+        btnCancel.addActionListener(e -> dlg.dispose());
+        btnSubmit.addActionListener(e -> {
+            String oldP = new String(txtOld.getPassword()).trim();
+            String newP = new String(txtNew.getPassword()).trim();
+ 
+            if (newP.isEmpty()) {
+                JOptionPane.showMessageDialog(dlg, "New password cannot be blank.");
+                return;
+            }
+ 
+            try (Connection conn = getConnection();
+                 PreparedStatement check = conn.prepareStatement("SELECT user_id FROM users WHERE user_id = ? AND password = ?");
+                 PreparedStatement upd = conn.prepareStatement("UPDATE users SET password = ? WHERE user_id = ?")) {
+                check.setInt(1, loggedInUserId);
+                check.setString(2, oldP);
+                ResultSet rs = check.executeQuery();
+ 
+                if (rs.next()) {
+                    upd.setString(1, newP);
+                    upd.setInt(2, loggedInUserId);
+                    upd.executeUpdate();
+                    JOptionPane.showMessageDialog(dlg, "Password updated successfully!");
+                    dlg.dispose();
+                } else {
+                    JOptionPane.showMessageDialog(dlg, "Incorrect current password.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(dlg, "Error updating password: " + ex.getMessage());
+            }
+        });
+ 
+        dlg.setVisible(true);
+    }
+ 
+    // ==========================================
+    // 4. DASHBOARD PANEL
     // ==========================================
 }
