@@ -869,4 +869,71 @@ public class VehicleRentalApp {
     // ==========================================
     // 4. DASHBOARD PANEL
     // ==========================================
+    private static JPanel createDashboardPanel() {
+        JPanel panel = newPage();
+ 
+        StatCard lblTotalVehicles = new StatCard("Total Fleet", "0", PRIMARY);
+        StatCard lblAvailableVehicles = new StatCard("Available Fleet", "0", SUCCESS);
+        StatCard lblRentedVehicles = new StatCard("Active Rentals", "0", PURPLE);
+        StatCard lblTotalCustomers = new StatCard("Registered Customers", "0", new Color(6, 148, 162));
+        StatCard lblMaintenance = new StatCard("Under Maintenance", "0", WARNING);
+        StatCard lblRevenue = new StatCard("Total Net Revenue", "₹0.00", DANGER);
+ 
+        JPanel statsGrid = new JPanel(new GridLayout(2, 3, 16, 16));
+        statsGrid.setOpaque(false);
+        statsGrid.setPreferredSize(new Dimension(0, 250));
+        statsGrid.add(lblTotalVehicles);
+        statsGrid.add(lblAvailableVehicles);
+        statsGrid.add(lblRentedVehicles);
+        statsGrid.add(lblTotalCustomers);
+        statsGrid.add(lblMaintenance);
+        statsGrid.add(lblRevenue);
+ 
+        JButton btnRefresh = btn("Refresh Dashboard Metrics", PRIMARY);
+ 
+        JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
+        JLabel welcome = new JLabel("Welcome back, " + loggedInUser + "!");
+        welcome.setFont(f(Font.BOLD, 16));
+        welcome.setForeground(TEXT);
+        top.add(welcome, BorderLayout.WEST);
+        top.add(btnRefresh, BorderLayout.EAST);
+ 
+        DefaultTableModel recentModel = new DefaultTableModel(new String[]{"Rental ID", "Customer", "Vehicle", "Pickup", "Return Due", "Amount (₹)", "Status"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable recentTable = makeTable(recentModel);
+ 
+        refreshDashboardTab = () -> {
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+                ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM vehicles");
+                if (rs.next()) lblTotalVehicles.setValue(String.valueOf(rs.getInt(1)));
+ 
+                rs = stmt.executeQuery("SELECT COUNT(*) FROM vehicles WHERE status = 'Available'");
+                if (rs.next()) lblAvailableVehicles.setValue(String.valueOf(rs.getInt(1)));
+ 
+                rs = stmt.executeQuery("SELECT COUNT(*) FROM rentals WHERE status = 'Active'");
+                if (rs.next()) lblRentedVehicles.setValue(String.valueOf(rs.getInt(1)));
+ 
+                rs = stmt.executeQuery("SELECT COUNT(*) FROM customers");
+                if (rs.next()) lblTotalCustomers.setValue(String.valueOf(rs.getInt(1)));
+ 
+                rs = stmt.executeQuery("SELECT COUNT(*) FROM vehicles WHERE status = 'Under Maintenance'");
+                if (rs.next()) lblMaintenance.setValue(String.valueOf(rs.getInt(1)));
+ 
+                rs = stmt.executeQuery("SELECT IFNULL(SUM(final_amount), 0) FROM rentals WHERE status = 'Returned'");
+                if (rs.next()) lblRevenue.setValue("₹" + String.format("%,.2f", rs.getDouble(1)));
+ 
+                recentModel.setRowCount(0);
+                rs = stmt.executeQuery("SELECT r.rental_id, c.full_name, CONCAT(v.make, ' ', v.model), r.pickup_date, r.return_date, r.final_amount, r.status FROM rentals r JOIN customers c ON r.customer_id = c.customer_id JOIN vehicles v ON r.vehicle_id = v.vehicle_id ORDER BY r.rental_id DESC LIMIT 8");
+                while (rs.next()) {
+                    recentModel.addRow(new Object[]{rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getDouble(6), rs.getString(7)});
+                }
+            } catch (SQLException ex) {
+                System.err.println("Dashboard refresh error: " + ex.getMessage());
+            }
+        };
+        return new JPanel();
+    }
 }
