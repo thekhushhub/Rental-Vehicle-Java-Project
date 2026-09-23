@@ -934,6 +934,23 @@ public class VehicleRentalApp {
                 System.err.println("Dashboard refresh error: " + ex.getMessage());
             }
         };
-        return new JPanel();
+ 
+        btnRefresh.addActionListener(e -> refreshDashboardTab.run());
+ 
+        JPanel body = new JPanel(new BorderLayout(0, 16));
+        body.setOpaque(false);
+        body.add(statsGrid, BorderLayout.NORTH);
+        body.add(tableCard("Recent Rentals", recentTable), BorderLayout.CENTER);
+ 
+        panel.add(top, BorderLayout.NORTH);
+        panel.add(body, BorderLayout.CENTER);
+        refreshDashboardTab.run();
+ 
+        return panel;
     }
+ 
+    // ==========================================
+    // 5. VEHICLE MANAGEMENT PANEL
+    // ==========================================
+    private static JPanel createVehiclePanel() {
 }
