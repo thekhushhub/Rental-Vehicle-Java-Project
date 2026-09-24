@@ -953,4 +953,52 @@ public class VehicleRentalApp {
     // 5. VEHICLE MANAGEMENT PANEL
     // ==========================================
     private static JPanel createVehiclePanel() {
+        JPanel panel = newPage();
+ 
+        DefaultTableModel model = new DefaultTableModel(new String[]{"Category ID", "Category Name", "Description"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable table = makeTable(model);
+ 
+        JTextField txtName = tf("");
+        JTextField txtDesc = tf("");
+        JPanel form = buildForm(2, "Category Name", txtName, "Description", txtDesc);
+ 
+        JButton btnAdd = btn("Add Category", SUCCESS);
+        JButton btnDelete = btn("Delete Category", DANGER);
+ 
+        Runnable loadData = () -> {
+            model.setRowCount(0);
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM categories")) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{rs.getInt(1), rs.getString(2), rs.getString(3)});
+                }
+            } catch (SQLException ignored) {}
+        };
+ 
+        btnAdd.addActionListener(e -> {
+            String name = txtName.getText().trim();
+            if (name.isEmpty()) {
+                JOptionPane.showMessageDialog(panel, "Category name cannot be empty.");
+                return;
+            }
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("INSERT INTO categories (category_name, description) VALUES (?, ?)")) {
+                stmt.setString(1, name);
+                stmt.setString(2, txtDesc.getText().trim());
+                stmt.executeUpdate();
+                loadData.run();
+                txtName.setText(""); txtDesc.setText("");
+                JOptionPane.showMessageDialog(panel, "Category added.");
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error: " + ex.getMessage());
+            }
+        });
+ 
+        btnDelete.addActionListener(e -> {
+            int row = table.getSelectedRow();
+        return new JPanel();
+    }
 }
