@@ -999,6 +999,30 @@ public class VehicleRentalApp {
  
         btnDelete.addActionListener(e -> {
             int row = table.getSelectedRow();
-        return new JPanel();
+            if (row == -1) {
+                JOptionPane.showMessageDialog(panel, "Select a category to delete.");
+                return;
+            }
+            int catId = (int) model.getValueAt(row, 0);
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("DELETE FROM categories WHERE category_id = ?")) {
+                stmt.setInt(1, catId);
+                stmt.executeUpdate();
+                loadData.run();
+                JOptionPane.showMessageDialog(panel, "Category deleted.");
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error: " + ex.getMessage());
+            }
+        });
+ 
+        panel.add(formCard("Category Details", null, form, actionRow(btnAdd, btnDelete)), BorderLayout.NORTH);
+        panel.add(tableCard("All Categories", table), BorderLayout.CENTER);
+        loadData.run();
+        return panel;
     }
+ 
+    // ==========================================
+    // 7. CUSTOMER MANAGEMENT PANEL
+    // ==========================================
+    private static JPanel createCustomerPanel() {
 }
