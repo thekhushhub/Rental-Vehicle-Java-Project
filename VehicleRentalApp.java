@@ -955,6 +955,94 @@ public class VehicleRentalApp {
     private static JPanel createVehiclePanel() {
         JPanel panel = newPage();
  
+        DefaultTableModel model = new DefaultTableModel(new String[]{"ID", "Reg Number", "Make", "Model", "Year", "Category", "Rate/Day (₹)", "Status"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable table = makeTable(model);
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(model);
+        table.setRowSorter(sorter);
+        table.getColumnModel().getColumn(0).setMaxWidth(70);
+ 
+        JTextField txtSearch = tf(18);
+        JButton btnSearch = btn("Filter / Search", PRIMARY);
+        JButton btnClearSearch = btn("Clear Filter", NEUTRAL);
+        JPanel searchPanel = searchRow("Search Vehicles:", txtSearch, btnSearch, btnClearSearch);
+ 
+        Runnable doSearch = () -> {
+            String text = txtSearch.getText().trim();
+            if (text.isEmpty()) sorter.setRowFilter(null);
+            else sorter.setRowFilter(RowFilter.regexFilter("(?i)" + Pattern.quote(text)));
+        };
+        btnSearch.addActionListener(e -> doSearch.run());
+        txtSearch.addActionListener(e -> doSearch.run());
+ 
+        btnClearSearch.addActionListener(e -> {
+            txtSearch.setText("");
+            sorter.setRowFilter(null);
+        });
+ 
+        JTextField txtReg = tf("");
+        JTextField txtMake = tf("");
+        JTextField txtModel = tf("");
+        JTextField txtYear = tf("");
+        JTextField txtRate = tf("");
+        JComboBox<String> cmbCategory = styleCombo(new JComboBox<>());
+        JComboBox<String> cmbStatus = styleCombo(new JComboBox<>(new String[]{"Available", "Rented", "Under Maintenance", "Reserved"}));
+ 
+        Runnable loadCategories = () -> {
+            cmbCategory.removeAllItems();
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT category_id, category_name FROM categories")) {
+                while (rs.next()) {
+                    cmbCategory.addItem(rs.getInt(1) + " - " + rs.getString(2));
+                }
+            } catch (SQLException ignored) {}
+        };
+ 
+        refreshVehiclesTab = () -> {
+            model.setRowCount(0);
+            loadCategories.run();
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT v.vehicle_id, v.reg_number, v.make, v.model, v.year, c.category_name, v.daily_rate, v.status FROM vehicles v LEFT JOIN categories c ON v.category_id = c.category_id ORDER BY v.vehicle_id DESC")) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getInt(5), rs.getString(6), rs.getDouble(7), rs.getString(8)});
+                }
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error loading vehicles: " + ex.getMessage());
+            }
+        };
+ 
+        JPanel form = buildForm(3,
+                "Reg Number", txtReg, "Make / Brand", txtMake, "Model Name", txtModel,
+                "Year", txtYear, "Daily Rate (₹)", txtRate, "Category", cmbCategory,
+                "Status", cmbStatus);
+ 
+        JButton btnAdd = btn("Add Vehicle", SUCCESS);
+        JButton btnUpdate = btn("Update Selected Vehicle", PRIMARY);
+        JButton btnDelete = btn("Delete Vehicle", DANGER);
+        JButton btnRefresh = btn("Refresh", NEUTRAL);
+        JButton btnClearForm = btn("Clear Form", WARNING);
+ 
+        table.getSelectionModel().addListSelectionListener(e -> {
+            int selectedRow = table.getSelectedRow();
+            if (selectedRow != -1) {
+                int modelRow = table.convertRowIndexToModel(selectedRow);
+                txtReg.setText(model.getValueAt(modelRow, 1).toString());
+                txtMake.setText(model.getValueAt(modelRow, 2).toString());
+                txtModel.setText(model.getValueAt(modelRow, 3).toString());
+                txtYear.setText(model.getValueAt(modelRow, 4).toString());
+                txtRate.setText(model.getValueAt(modelRow, 6).toString());
+                cmbStatus.setSelectedItem(model.getValueAt(modelRow, 7).toString());
+                Object catName = model.getValueAt(modelRow, 5);
+                if (catName != null) {
+                    for (int i = 0; i < cmbCategory.getItemCount(); i++) {
+                        if (cmbCategory.getItemAt(i).endsWith(" - " + catName)) {
+                            cmbCategory.setSelectedIndex(i);
+        return new JPanel();
+    }
+        JPanel panel = newPage();
+ 
         DefaultTableModel model = new DefaultTableModel(new String[]{"Category ID", "Category Name", "Description"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) { return false; }
