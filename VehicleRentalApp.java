@@ -1039,8 +1039,110 @@ public class VehicleRentalApp {
                     for (int i = 0; i < cmbCategory.getItemCount(); i++) {
                         if (cmbCategory.getItemAt(i).endsWith(" - " + catName)) {
                             cmbCategory.setSelectedIndex(i);
-        return new JPanel();
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+ 
+        btnClearForm.addActionListener(e -> {
+            table.clearSelection();
+            txtReg.setText(""); txtMake.setText(""); txtModel.setText("");
+            txtYear.setText(""); txtRate.setText("");
+        });
+ 
+        btnAdd.addActionListener(e -> {
+            try {
+                if (txtReg.getText().trim().isEmpty() || txtMake.getText().trim().isEmpty() || cmbCategory.getSelectedItem() == null) {
+                    JOptionPane.showMessageDialog(panel, "Please fill in all vehicle details.");
+                    return;
+                }
+                int catId = Integer.parseInt(cmbCategory.getSelectedItem().toString().split(" - ")[0]);
+ 
+                try (Connection conn = getConnection();
+                     PreparedStatement stmt = conn.prepareStatement("INSERT INTO vehicles (reg_number, make, model, year, category_id, daily_rate, status) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                    stmt.setString(1, txtReg.getText().trim().toUpperCase());
+                    stmt.setString(2, txtMake.getText().trim());
+                    stmt.setString(3, txtModel.getText().trim());
+                    stmt.setInt(4, Integer.parseInt(txtYear.getText().trim()));
+                    stmt.setInt(5, catId);
+                    stmt.setDouble(6, Double.parseDouble(txtRate.getText().trim()));
+                    stmt.setString(7, cmbStatus.getSelectedItem().toString());
+                    stmt.executeUpdate();
+ 
+                    JOptionPane.showMessageDialog(panel, "Vehicle added successfully!");
+                    refreshVehiclesTab.run();
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(panel, "Error adding vehicle: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+ 
+        btnUpdate.addActionListener(e -> {
+            int selectedRow = table.getSelectedRow();
+            if (selectedRow == -1) {
+                JOptionPane.showMessageDialog(panel, "Select a vehicle from the table to update.");
+                return;
+            }
+            int modelRow = table.convertRowIndexToModel(selectedRow);
+            int vehicleId = (int) model.getValueAt(modelRow, 0);
+ 
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("UPDATE vehicles SET reg_number = ?, make = ?, model = ?, year = ?, daily_rate = ?, status = ? WHERE vehicle_id = ?")) {
+                stmt.setString(1, txtReg.getText().trim().toUpperCase());
+                stmt.setString(2, txtMake.getText().trim());
+                stmt.setString(3, txtModel.getText().trim());
+                stmt.setInt(4, Integer.parseInt(txtYear.getText().trim()));
+                stmt.setDouble(5, Double.parseDouble(txtRate.getText().trim()));
+                stmt.setString(6, cmbStatus.getSelectedItem().toString());
+                stmt.setInt(7, vehicleId);
+                stmt.executeUpdate();
+ 
+                JOptionPane.showMessageDialog(panel, "Vehicle updated successfully!");
+                refreshVehiclesTab.run();
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(panel, "Error updating vehicle: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+ 
+        btnDelete.addActionListener(e -> {
+            int selectedRow = table.getSelectedRow();
+            if (selectedRow == -1) {
+                JOptionPane.showMessageDialog(panel, "Select a vehicle to delete.");
+                return;
+            }
+            int confirm = JOptionPane.showConfirmDialog(panel, "Are you sure you want to delete this vehicle?", "Confirm Deletion", JOptionPane.YES_NO_OPTION);
+            if (confirm != JOptionPane.YES_OPTION) return;
+ 
+            int modelRow = table.convertRowIndexToModel(selectedRow);
+            int vehicleId = (int) model.getValueAt(modelRow, 0);
+ 
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("DELETE FROM vehicles WHERE vehicle_id = ?")) {
+                stmt.setInt(1, vehicleId);
+                stmt.executeUpdate();
+                JOptionPane.showMessageDialog(panel, "Vehicle deleted.");
+                refreshVehiclesTab.run();
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Cannot delete vehicle if it has associated rental records: " + ex.getMessage());
+            }
+        });
+ 
+        btnRefresh.addActionListener(e -> refreshVehiclesTab.run());
+ 
+        panel.add(formCard("Vehicle Details", searchPanel, form,
+                actionRow(btnRefresh, btnClearForm, btnAdd, btnUpdate, btnDelete)), BorderLayout.NORTH);
+        panel.add(tableCard("Fleet Inventory", table), BorderLayout.CENTER);
+ 
+        refreshVehiclesTab.run();
+        return panel;
     }
+ 
+    // ==========================================
+    // 6. CATEGORY MANAGEMENT PANEL
+    // ==========================================
+    private static JPanel createCategoryPanel() {
         JPanel panel = newPage();
  
         DefaultTableModel model = new DefaultTableModel(new String[]{"Category ID", "Category Name", "Description"}, 0) {
