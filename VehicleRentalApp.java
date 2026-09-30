@@ -1215,4 +1215,80 @@ public class VehicleRentalApp {
     // 7. CUSTOMER MANAGEMENT PANEL
     // ==========================================
     private static JPanel createCustomerPanel() {
+        JPanel panel = newPage();
+ 
+        DefaultTableModel model = new DefaultTableModel(new String[]{"ID", "Full Name", "Phone", "Email", "License Number", "Address"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable table = makeTable(model);
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(model);
+        table.setRowSorter(sorter);
+        table.getColumnModel().getColumn(0).setMaxWidth(70);
+ 
+        JTextField txtSearch = tf(18);
+        JButton btnSearch = btn("Search Customer", PRIMARY);
+        JButton btnClear = btn("Clear", NEUTRAL);
+        JPanel searchPanel = searchRow("Search (Name/Phone/License):", txtSearch, btnSearch, btnClear);
+ 
+        Runnable doSearch = () -> {
+            String text = txtSearch.getText().trim();
+            if (text.isEmpty()) sorter.setRowFilter(null);
+            else sorter.setRowFilter(RowFilter.regexFilter("(?i)" + Pattern.quote(text)));
+        };
+        btnSearch.addActionListener(e -> doSearch.run());
+        txtSearch.addActionListener(e -> doSearch.run());
+ 
+        btnClear.addActionListener(e -> {
+            txtSearch.setText("");
+            sorter.setRowFilter(null);
+        });
+ 
+        JTextField txtName = tf("");
+        JTextField txtPhone = tf("");
+        JTextField txtEmail = tf("");
+        JTextField txtLicense = tf("");
+        JTextField txtAddress = tf("");
+ 
+        JPanel form = buildForm(2,
+                "Full Name", txtName, "Phone", txtPhone,
+                "Email", txtEmail, "License Number", txtLicense,
+                "Address / City", txtAddress);
+ 
+        JButton btnAdd = btn("Add Customer", SUCCESS);
+        JButton btnUpdate = btn("Update Selected", PRIMARY);
+        JButton btnDelete = btn("Delete Customer", DANGER);
+        JButton btnRefresh = btn("Refresh", NEUTRAL);
+        JButton btnClearForm = btn("Clear Form", WARNING);
+ 
+        table.getSelectionModel().addListSelectionListener(e -> {
+            int selectedRow = table.getSelectedRow();
+            if (selectedRow != -1) {
+                int modelRow = table.convertRowIndexToModel(selectedRow);
+                txtName.setText(model.getValueAt(modelRow, 1).toString());
+                txtPhone.setText(model.getValueAt(modelRow, 2).toString());
+                txtEmail.setText(model.getValueAt(modelRow, 3) != null ? model.getValueAt(modelRow, 3).toString() : "");
+                txtLicense.setText(model.getValueAt(modelRow, 4).toString());
+                txtAddress.setText(model.getValueAt(modelRow, 5) != null ? model.getValueAt(modelRow, 5).toString() : "");
+            }
+        });
+ 
+        btnClearForm.addActionListener(e -> {
+            table.clearSelection();
+            txtName.setText(""); txtPhone.setText(""); txtEmail.setText("");
+            txtLicense.setText(""); txtAddress.setText("");
+        });
+ 
+        refreshCustomersTab = () -> {
+            model.setRowCount(0);
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT * FROM customers ORDER BY customer_id DESC")) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getString(6)});
+                }
+            } catch (SQLException ignored) {}
+        };
+ 
+        return new JPanel();
+    }
 }
