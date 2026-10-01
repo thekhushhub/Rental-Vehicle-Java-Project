@@ -1289,6 +1289,77 @@ public class VehicleRentalApp {
             } catch (SQLException ignored) {}
         };
  
-        return new JPanel();
+        btnAdd.addActionListener(e -> {
+            if (txtName.getText().trim().isEmpty() || txtPhone.getText().trim().isEmpty() || txtLicense.getText().trim().isEmpty()) {
+                JOptionPane.showMessageDialog(panel, "Name, Phone, and License are mandatory fields.");
+                return;
+            }
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("INSERT INTO customers (full_name, phone, email, license_number, address) VALUES (?, ?, ?, ?, ?)")) {
+                stmt.setString(1, txtName.getText().trim());
+                stmt.setString(2, txtPhone.getText().trim());
+                stmt.setString(3, txtEmail.getText().trim());
+                stmt.setString(4, txtLicense.getText().trim().toUpperCase());
+                stmt.setString(5, txtAddress.getText().trim());
+                stmt.executeUpdate();
+                JOptionPane.showMessageDialog(panel, "Customer registered successfully!");
+                refreshCustomersTab.run();
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error: " + ex.getMessage());
+            }
+        });
+ 
+        btnUpdate.addActionListener(e -> {
+            int selectedRow = table.getSelectedRow();
+            if (selectedRow == -1) {
+                JOptionPane.showMessageDialog(panel, "Select a customer to update.");
+                return;
+            }
+            int modelRow = table.convertRowIndexToModel(selectedRow);
+            int custId = (int) model.getValueAt(modelRow, 0);
+ 
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("UPDATE customers SET full_name = ?, phone = ?, email = ?, license_number = ?, address = ? WHERE customer_id = ?")) {
+                stmt.setString(1, txtName.getText().trim());
+                stmt.setString(2, txtPhone.getText().trim());
+                stmt.setString(3, txtEmail.getText().trim());
+                stmt.setString(4, txtLicense.getText().trim().toUpperCase());
+                stmt.setString(5, txtAddress.getText().trim());
+                stmt.setInt(6, custId);
+                stmt.executeUpdate();
+                JOptionPane.showMessageDialog(panel, "Customer record updated.");
+                refreshCustomersTab.run();
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error updating customer: " + ex.getMessage());
+            }
+        });
+ 
+        btnDelete.addActionListener(e -> {
+            int row = table.getSelectedRow();
+            if (row == -1) return;
+            int custId = (int) model.getValueAt(table.convertRowIndexToModel(row), 0);
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("DELETE FROM customers WHERE customer_id = ?")) {
+                stmt.setInt(1, custId);
+                stmt.executeUpdate();
+                refreshCustomersTab.run();
+                JOptionPane.showMessageDialog(panel, "Customer deleted.");
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Cannot delete customer with active or past rental records: " + ex.getMessage());
+            }
+        });
+ 
+        btnRefresh.addActionListener(e -> refreshCustomersTab.run());
+ 
+        panel.add(formCard("Customer Details", searchPanel, form,
+                actionRow(btnRefresh, btnClearForm, btnAdd, btnUpdate, btnDelete)), BorderLayout.NORTH);
+        panel.add(tableCard("Customer Directory", table), BorderLayout.CENTER);
+        refreshCustomersTab.run();
+        return panel;
     }
+ 
+    // ==========================================
+    // 8. RENTALS & BOOKINGS PANEL (FIXED & FULLY SYNCED)
+    // ==========================================
+    private static JPanel createRentalPanel() {
 }
