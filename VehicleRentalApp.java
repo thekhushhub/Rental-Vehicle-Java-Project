@@ -1362,4 +1362,123 @@ public class VehicleRentalApp {
     // 8. RENTALS & BOOKINGS PANEL (FIXED & FULLY SYNCED)
     // ==========================================
     private static JPanel createRentalPanel() {
+        JPanel panel = newPage();
+ 
+        DefaultTableModel model = new DefaultTableModel(new String[]{"Rental ID", "Customer", "Vehicle", "Pickup Date", "Return Due", "Days", "Daily Rate", "Deposit (₹)", "Final (₹)", "Status"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable table = makeTable(model);
+ 
+        JComboBox<String> cmbCustomer = styleCombo(new JComboBox<>());
+        JComboBox<String> cmbVehicle = styleCombo(new JComboBox<>());
+        JTextField txtPickupDate = tf(LocalDate.now().toString());
+        JTextField txtReturnDate = tf(LocalDate.now().plusDays(3).toString());
+        JTextField txtDeposit = tf("2000.00");
+ 
+        JPanel form = buildForm(2,
+                "Select Customer", cmbCustomer, "Available Fleet", cmbVehicle,
+                "Pickup Date (YYYY-MM-DD)", txtPickupDate, "Return Due Date (YYYY-MM-DD)", txtReturnDate,
+                "Security Deposit (₹)", txtDeposit);
+ 
+        JButton btnBook = btn("Confirm Booking", SUCCESS);
+        JButton btnCancel = btn("Cancel Selected Booking", DANGER);
+        JButton btnRefresh = btn("Refresh Dropdowns & Table", NEUTRAL);
+ 
+        refreshRentalsTab = () -> {
+            // 1. Reload Customers Dropdown
+            cmbCustomer.removeAllItems();
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT customer_id, full_name, phone FROM customers ORDER BY full_name ASC")) {
+                while (rs.next()) {
+                    cmbCustomer.addItem(rs.getInt(1) + " - " + rs.getString(2) + " (" + rs.getString(3) + ")");
+                }
+            } catch (SQLException ex) {
+                System.err.println("Error loading customers: " + ex.getMessage());
+            }
+ 
+            // 2. Reload Available Vehicles Dropdown
+            cmbVehicle.removeAllItems();
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT vehicle_id, make, model, reg_number, daily_rate FROM vehicles WHERE status = 'Available' ORDER BY make ASC")) {
+                while (rs.next()) {
+                    cmbVehicle.addItem(rs.getInt(1) + " - " + rs.getString(2) + " " + rs.getString(3) + " (" + rs.getString(4) + ") [₹" + rs.getDouble(5) + "/day]");
+                }
+            } catch (SQLException ex) {
+                System.err.println("Error loading vehicles: " + ex.getMessage());
+            }
+ 
+            // 3. Reload Rental History Table
+            model.setRowCount(0);
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT r.rental_id, c.full_name, CONCAT(v.make, ' ', v.model, ' (', v.reg_number, ')'), r.pickup_date, r.return_date, r.rental_duration_days, r.daily_rate, r.security_deposit, r.final_amount, r.status FROM rentals r JOIN customers c ON r.customer_id = c.customer_id JOIN vehicles v ON r.vehicle_id = v.vehicle_id ORDER BY r.rental_id DESC")) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5), rs.getInt(6), rs.getDouble(7), rs.getDouble(8), rs.getDouble(9), rs.getString(10)});
+                }
+            } catch (SQLException ignored) {}
+        };
+ 
+        btnBook.addActionListener(e -> {
+            if (cmbCustomer.getSelectedItem() == null) {
+                JOptionPane.showMessageDialog(panel, "Please register and select a Customer first.", "Missing Customer", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (cmbVehicle.getSelectedItem() == null) {
+                JOptionPane.showMessageDialog(panel, "No vehicles available for booking right now.", "No Fleet Available", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+ 
+            try {
+                int custId = Integer.parseInt(cmbCustomer.getSelectedItem().toString().split(" - ")[0]);
+                int vehId = Integer.parseInt(cmbVehicle.getSelectedItem().toString().split(" - ")[0]);
+                LocalDate pDate = LocalDate.parse(txtPickupDate.getText().trim());
+                LocalDate rDate = LocalDate.parse(txtReturnDate.getText().trim());
+ 
+                long days = ChronoUnit.DAYS.between(pDate, rDate);
+                if (days <= 0) days = 1;
+ 
+                try (Connection conn = getConnection()) {
+                    conn.setAutoCommit(false);
+ 
+                    double rate = 0;
+                    try (PreparedStatement vStmt = conn.prepareStatement("SELECT daily_rate FROM vehicles WHERE vehicle_id = ? AND status = 'Available'")) {
+                        vStmt.setInt(1, vehId);
+                        ResultSet rs = vStmt.executeQuery();
+                        if (rs.next()) {
+                            rate = rs.getDouble(1);
+                        } else {
+                            JOptionPane.showMessageDialog(panel, "Selected vehicle is no longer available.");
+                            conn.rollback();
+                            return;
+                        }
+                    }
+ 
+                    double totalRent = rate * days;
+                    double deposit = Double.parseDouble(txtDeposit.getText().trim());
+                    double tax = totalRent * 0.18; // 18% GST default
+                    double finalAmount = totalRent + tax;
+ 
+                    try (PreparedStatement rStmt = conn.prepareStatement("INSERT INTO rentals (customer_id, vehicle_id, pickup_date, return_date, rental_duration_days, daily_rate, total_rent, security_deposit, tax_amount, final_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')")) {
+                        rStmt.setInt(1, custId);
+                        rStmt.setInt(2, vehId);
+                        rStmt.setDate(3, Date.valueOf(pDate));
+                        rStmt.setDate(4, Date.valueOf(rDate));
+                        rStmt.setInt(5, (int) days);
+                        rStmt.setDouble(6, rate);
+                        rStmt.setDouble(7, totalRent);
+                        rStmt.setDouble(8, deposit);
+                        rStmt.setDouble(9, tax);
+                        rStmt.setDouble(10, finalAmount);
+                        rStmt.executeUpdate();
+                    }
+ 
+                    try (PreparedStatement upStmt = conn.prepareStatement("UPDATE vehicles SET status = 'Rented' WHERE vehicle_id = ?")) {
+                        upStmt.setInt(1, vehId);
+                        upStmt.executeUpdate();
+                    }
+ 
+                    conn.commit();
+                    JOptionPane.showMessageDialog(panel, "Booking Confirmed Successfully!\nDuration: " + days + " Day(s)\nEstimated Total (with GST): ₹" + String.format("%.2f", finalAmount), "Success", JOptionPane.INFORMATION_MESSAGE);
+        return new JPanel();
+    }
 }
