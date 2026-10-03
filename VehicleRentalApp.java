@@ -1479,6 +1479,126 @@ public class VehicleRentalApp {
  
                     conn.commit();
                     JOptionPane.showMessageDialog(panel, "Booking Confirmed Successfully!\nDuration: " + days + " Day(s)\nEstimated Total (with GST): ₹" + String.format("%.2f", finalAmount), "Success", JOptionPane.INFORMATION_MESSAGE);
+                    refreshRentalsTab.run();
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(panel, "Error creating booking:\n" + ex.getMessage(), "Booking Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+ 
+        btnCancel.addActionListener(e -> {
+            int row = table.getSelectedRow();
+            if (row == -1) {
+                JOptionPane.showMessageDialog(panel, "Please select a booking from the table to cancel.", "Selection Required", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+ 
+            int rentalId = (int) model.getValueAt(row, 0);
+            String currentStatus = model.getValueAt(row, 9).toString();
+ 
+            if (!"Active".equalsIgnoreCase(currentStatus)) {
+                JOptionPane.showMessageDialog(panel, "Only 'Active' bookings can be cancelled. Current status is: " + currentStatus, "Invalid Operation", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+ 
+            int confirm = JOptionPane.showConfirmDialog(panel, "Are you sure you want to CANCEL Rental ID #" + rentalId + "?\nThe vehicle will be marked as Available.", "Confirm Cancellation", JOptionPane.YES_NO_OPTION);
+            if (confirm != JOptionPane.YES_OPTION) return;
+ 
+            try (Connection conn = getConnection()) {
+                conn.setAutoCommit(false);
+ 
+                int vId = -1;
+                try (PreparedStatement stmt = conn.prepareStatement("SELECT vehicle_id FROM rentals WHERE rental_id = ?")) {
+                    stmt.setInt(1, rentalId);
+                    ResultSet rs = stmt.executeQuery();
+                    if (rs.next()) vId = rs.getInt(1);
+                }
+ 
+                if (vId != -1) {
+                    try (PreparedStatement cancelStmt = conn.prepareStatement("UPDATE rentals SET status = 'Cancelled' WHERE rental_id = ?")) {
+                        cancelStmt.setInt(1, rentalId);
+                        cancelStmt.executeUpdate();
+                    }
+ 
+                    try (PreparedStatement vUp = conn.prepareStatement("UPDATE vehicles SET status = 'Available' WHERE vehicle_id = ?")) {
+                        vUp.setInt(1, vId);
+                        vUp.executeUpdate();
+                    }
+ 
+                    conn.commit();
+                    JOptionPane.showMessageDialog(panel, "Booking #" + rentalId + " has been successfully CANCELLED.", "Booking Cancelled", JOptionPane.INFORMATION_MESSAGE);
+                    refreshRentalsTab.run();
+                } else {
+                    conn.rollback();
+                    JOptionPane.showMessageDialog(panel, "Could not find vehicle associated with this rental.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error during cancellation: " + ex.getMessage(), "SQL Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+ 
+        btnRefresh.addActionListener(e -> refreshRentalsTab.run());
+ 
+        panel.add(formCard("New Booking", null, form, actionRow(btnRefresh, btnBook, btnCancel)), BorderLayout.NORTH);
+        panel.add(tableCard("Rental History", table), BorderLayout.CENTER);
+ 
+        refreshRentalsTab.run();
+        return panel;
+    }
+ 
+    // ==========================================
+    // 9. RETURN MANAGEMENT & INVOICING PANEL
+    // ==========================================
+    private static JPanel createReturnPanel() {
+        JPanel panel = newPage();
+ 
+        DefaultTableModel model = new DefaultTableModel(new String[]{"Rental ID", "Customer", "Vehicle", "Due Date", "Daily Rate (₹)", "Status"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable table = makeTable(model);
+ 
+        JTextField txtReturnDate = tf(LocalDate.now().toString());
+        JTextField txtLateFee = tf("0.00");
+        JButton btnProcessReturn = btn("Process Return & Generate Invoice", SUCCESS);
+        JButton btnRefresh = btn("Refresh Active Returns", NEUTRAL);
+ 
+        JPanel returnForm = buildForm(2,
+                "Actual Return Date (YYYY-MM-DD)", txtReturnDate,
+                "Additional Late / Damage / Extra KM Fee (₹)", txtLateFee);
+ 
+        refreshReturnsTab = () -> {
+            model.setRowCount(0);
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT r.rental_id, c.full_name, CONCAT(v.make, ' ', v.model), r.return_date, r.daily_rate, r.status FROM rentals r JOIN customers c ON r.customer_id = c.customer_id JOIN vehicles v ON r.vehicle_id = v.vehicle_id WHERE r.status = 'Active' ORDER BY r.return_date ASC")) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getDouble(5), rs.getString(6)});
+                }
+            } catch (SQLException ignored) {}
+        };
+ 
+        btnProcessReturn.addActionListener(e -> {
+            int row = table.getSelectedRow();
+            if (row == -1) {
+                JOptionPane.showMessageDialog(panel, "Please select an active rental from the table to process its return.", "Selection Required", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            int rentalId = (int) model.getValueAt(row, 0);
+ 
+            try (Connection conn = getConnection()) {
+                conn.setAutoCommit(false);
+                PreparedStatement stmt = conn.prepareStatement("SELECT * FROM rentals WHERE rental_id = ?");
+                stmt.setInt(1, rentalId);
+                ResultSet rs = stmt.executeQuery();
+ 
+                if (rs.next()) {
+                    int vehicleId = rs.getInt("vehicle_id");
+                    LocalDate expectedReturn = rs.getDate("return_date").toLocalDate();
+                    LocalDate actualReturn = LocalDate.parse(txtReturnDate.getText().trim());
+                    double dailyRate = rs.getDouble("daily_rate");
+                    double deposit = rs.getDouble("security_deposit");
+                    double baseRent = rs.getDouble("total_rent");
+ 
         return new JPanel();
     }
 }
