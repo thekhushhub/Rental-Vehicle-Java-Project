@@ -1599,6 +1599,131 @@ public class VehicleRentalApp {
                     double deposit = rs.getDouble("security_deposit");
                     double baseRent = rs.getDouble("total_rent");
  
+                    long extraLateDays = ChronoUnit.DAYS.between(expectedReturn, actualReturn);
+                    double manualExtraFee = Double.parseDouble(txtLateFee.getText().trim());
+                    double calculatedLateFee = manualExtraFee;
+                    if (extraLateDays > 0) {
+                        calculatedLateFee += (extraLateDays * dailyRate);
+                    }
+ 
+                    double tax = (baseRent + calculatedLateFee) * 0.18;
+                    double finalTotal = baseRent + calculatedLateFee + tax;
+                    double amountPayableAfterDeposit = finalTotal - deposit;
+ 
+                    PreparedStatement upRental = conn.prepareStatement("UPDATE rentals SET actual_return_date = ?, late_fee = ?, tax_amount = ?, final_amount = ?, status = 'Returned' WHERE rental_id = ?");
+                    upRental.setDate(1, Date.valueOf(actualReturn));
+                    upRental.setDouble(2, calculatedLateFee);
+                    upRental.setDouble(3, tax);
+                    upRental.setDouble(4, finalTotal);
+                    upRental.setInt(5, rentalId);
+                    upRental.executeUpdate();
+ 
+                    PreparedStatement upVeh = conn.prepareStatement("UPDATE vehicles SET status = 'Available' WHERE vehicle_id = ?");
+                    upVeh.setInt(1, vehicleId);
+                    upVeh.executeUpdate();
+ 
+                    conn.commit();
+ 
+                    String invoice = "======================= INVOICE =======================\n" +
+                            "Rental ID: #" + rentalId + "\n" +
+                            "Customer: " + model.getValueAt(row, 1) + "\n" +
+                            "Vehicle: " + model.getValueAt(row, 2) + "\n" +
+                            "Expected Return: " + expectedReturn + "\n" +
+                            "Actual Return: " + actualReturn + " (" + (extraLateDays > 0 ? extraLateDays + " Day(s) Overdue" : "On Time") + ")\n" +
+                            "-------------------------------------------------------\n" +
+                            "Base Rent: ₹" + String.format("%.2f", baseRent) + "\n" +
+                            "Late / Damage / Extra Fees: ₹" + String.format("%.2f", calculatedLateFee) + "\n" +
+                            "GST (18%): ₹" + String.format("%.2f", tax) + "\n" +
+                            "-------------------------------------------------------\n" +
+                            "Total Rental Cost: ₹" + String.format("%.2f", finalTotal) + "\n" +
+                            "Security Deposit Deducted: -₹" + String.format("%.2f", deposit) + "\n" +
+                            "=======================================================\n" +
+                            "NET BALANCE DUE: ₹" + String.format("%.2f", amountPayableAfterDeposit) + "\n" +
+                            "=======================================================";
+ 
+                    JTextArea area = new JTextArea(invoice);
+                    styleArea(area, 12);
+                    JScrollPane invoiceScroll = scroll(area);
+                    invoiceScroll.setPreferredSize(new Dimension(520, 330));
+                    JOptionPane.showMessageDialog(panel, invoiceScroll, "Vehicle Return Invoice", JOptionPane.INFORMATION_MESSAGE);
+                    refreshReturnsTab.run();
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(panel, "Error processing return: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+ 
+        btnRefresh.addActionListener(e -> refreshReturnsTab.run());
+ 
+        panel.add(tableCard("Active Rentals Awaiting Return", table), BorderLayout.CENTER);
+        panel.add(formCard("Return Details", null, returnForm, actionRow(btnRefresh, btnProcessReturn)), BorderLayout.SOUTH);
+        refreshReturnsTab.run();
+        return panel;
+    }
+ 
+    // ==========================================
+    // 10. MAINTENANCE MANAGEMENT PANEL
+    // ==========================================
+    private static JPanel createMaintenancePanel() {
+        JPanel panel = newPage();
+ 
+        DefaultTableModel model = new DefaultTableModel(new String[]{"ID", "Vehicle", "Service Type", "Cost (₹)", "Date", "Description"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable table = makeTable(model);
+        table.getColumnModel().getColumn(0).setMaxWidth(70);
+ 
+        JComboBox<String> cmbVehicles = styleCombo(new JComboBox<>());
+        JTextField txtService = tf("");
+        JTextField txtCost = tf("");
+        JTextField txtDate = tf(LocalDate.now().toString());
+        JTextField txtDesc = tf("");
+ 
+        JPanel form = buildForm(2,
+                "Select Vehicle", cmbVehicles, "Service / Repair Type", txtService,
+                "Expense Cost (₹)", txtCost, "Service Date", txtDate,
+                "Work Notes", txtDesc);
+ 
+        JButton btnAddRecord = btn("Add Record & Set Under Maintenance", WARNING);
+        JButton btnComplete = btn("Mark Maintenance Done (Available)", SUCCESS);
+        JButton btnRefresh = btn("Refresh", NEUTRAL);
+ 
+        refreshMaintenanceTab = () -> {
+            cmbVehicles.removeAllItems();
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT vehicle_id, make, model, reg_number, status FROM vehicles")) {
+                while (rs.next()) {
+                    cmbVehicles.addItem(rs.getInt(1) + " - " + rs.getString(2) + " " + rs.getString(3) + " (" + rs.getString(4) + ") [" + rs.getString(5) + "]");
+                }
+            } catch (SQLException ignored) {}
+ 
+            model.setRowCount(0);
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT m.maintenance_id, CONCAT(v.make, ' ', v.model, ' (', v.reg_number, ')'), m.service_type, m.cost, m.maintenance_date, m.description FROM maintenance m JOIN vehicles v ON m.vehicle_id = v.vehicle_id ORDER BY m.maintenance_id DESC")) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{rs.getInt(1), rs.getString(2), rs.getString(3), rs.getDouble(4), rs.getString(5), rs.getString(6)});
+                }
+            } catch (SQLException ignored) {}
+        };
+ 
+        btnAddRecord.addActionListener(e -> {
+            if (cmbVehicles.getSelectedItem() == null || txtService.getText().trim().isEmpty() || txtCost.getText().trim().isEmpty()) {
+                JOptionPane.showMessageDialog(panel, "Please select a vehicle and enter service details.");
+                return;
+            }
+ 
+            try (Connection conn = getConnection()) {
+                int vId = Integer.parseInt(cmbVehicles.getSelectedItem().toString().split(" - ")[0]);
+                conn.setAutoCommit(false);
+                PreparedStatement stmt = conn.prepareStatement("INSERT INTO maintenance (vehicle_id, service_type, cost, maintenance_date, description) VALUES (?, ?, ?, ?, ?)");
+                stmt.setInt(1, vId);
+                stmt.setString(2, txtService.getText().trim());
+                stmt.setDouble(3, Double.parseDouble(txtCost.getText().trim()));
+                stmt.setDate(4, Date.valueOf(txtDate.getText().trim()));
+                stmt.setString(5, txtDesc.getText().trim());
+                stmt.executeUpdate();
+ 
         return new JPanel();
     }
 }
