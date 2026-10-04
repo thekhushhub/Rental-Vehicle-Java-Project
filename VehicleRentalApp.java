@@ -1724,6 +1724,225 @@ public class VehicleRentalApp {
                 stmt.setString(5, txtDesc.getText().trim());
                 stmt.executeUpdate();
  
-        return new JPanel();
+                PreparedStatement upStmt = conn.prepareStatement("UPDATE vehicles SET status = 'Under Maintenance' WHERE vehicle_id = ?");
+                upStmt.setInt(1, vId);
+                upStmt.executeUpdate();
+ 
+                conn.commit();
+                refreshMaintenanceTab.run();
+                JOptionPane.showMessageDialog(panel, "Maintenance logged & vehicle status set to 'Under Maintenance'.");
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(panel, "Error logging maintenance: " + ex.getMessage());
+            }
+        });
+ 
+        btnComplete.addActionListener(e -> {
+            if (cmbVehicles.getSelectedItem() == null) return;
+            int vId = Integer.parseInt(cmbVehicles.getSelectedItem().toString().split(" - ")[0]);
+ 
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("UPDATE vehicles SET status = 'Available' WHERE vehicle_id = ?")) {
+                stmt.setInt(1, vId);
+                stmt.executeUpdate();
+                refreshMaintenanceTab.run();
+                JOptionPane.showMessageDialog(panel, "Vehicle is now restored to 'Available'.");
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error: " + ex.getMessage());
+            }
+        });
+ 
+        btnRefresh.addActionListener(e -> refreshMaintenanceTab.run());
+ 
+        panel.add(formCard("Service Details", null, form, actionRow(btnRefresh, btnAddRecord, btnComplete)), BorderLayout.NORTH);
+        panel.add(tableCard("Maintenance History", table), BorderLayout.CENTER);
+ 
+        refreshMaintenanceTab.run();
+        return panel;
     }
+ 
+    // ==========================================
+    // 11. ALERTS & NOTIFICATIONS PANEL
+    // ==========================================
+    private static JPanel createAlertsPanel() {
+        JPanel panel = newPage();
+ 
+        JEditorPane txtAlerts = new JEditorPane();
+        txtAlerts.setContentType("text/html");
+        txtAlerts.setEditable(false);
+        txtAlerts.setBackground(Color.WHITE);
+ 
+        JButton btnRefresh = btn("Check for System Alerts & Overdue Returns", PRIMARY);
+        JPanel top = new JPanel(new BorderLayout());
+        top.setOpaque(false);
+        top.add(btnRefresh, BorderLayout.WEST);
+ 
+        refreshAlertsTab = () -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append("<html><body style='font-family:SansSerif;font-size:13px;margin:10px'>");
+            sb.append("<h2><font color='#1e293b'>CRITICAL ALERTS &amp; NOTIFICATIONS</font></h2>");
+ 
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
+                // 1. Overdue Rentals
+                StringBuilder s1 = new StringBuilder();
+                ResultSet rs = stmt.executeQuery("SELECT r.rental_id, c.full_name, c.phone, CONCAT(v.make, ' ', v.model, ' [', v.reg_number, ']'), r.return_date, DATEDIFF(CURRENT_DATE, r.return_date) as overdue_days FROM rentals r JOIN customers c ON r.customer_id = c.customer_id JOIN vehicles v ON r.vehicle_id = v.vehicle_id WHERE r.status = 'Active' AND r.return_date < CURRENT_DATE");
+ 
+                int overdueCount = 0;
+                while (rs.next()) {
+                    overdueCount++;
+                    s1.append(String.format("<p><font color='#b91c1c'><b>[!]</b></font> Rental <b>#%d</b> | Customer: %s (%s) | Vehicle: %s | Due Date: %s (<font color='#b91c1c'><b>%d Days Overdue</b></font>)</p>",
+                            rs.getInt(1), esc(rs.getString(2)), esc(rs.getString(3)), esc(rs.getString(4)), esc(rs.getString(5)), rs.getInt(6)));
+                }
+                if (overdueCount == 0) s1.append("<p><font color='#15803d'>None. All active rentals are on schedule.</font></p>");
+ 
+                // 2. Returns Due Today
+                StringBuilder s2 = new StringBuilder();
+                rs = stmt.executeQuery("SELECT r.rental_id, c.full_name, c.phone, CONCAT(v.make, ' ', v.model) FROM rentals r JOIN customers c ON r.customer_id = c.customer_id JOIN vehicles v ON r.vehicle_id = v.vehicle_id WHERE r.status = 'Active' AND r.return_date = CURRENT_DATE");
+                int dueTodayCount = 0;
+                while (rs.next()) {
+                    dueTodayCount++;
+                    s2.append(String.format("<p><font color='#b45309'><b>[*]</b></font> Rental <b>#%d</b> | Customer: %s (%s) | Vehicle: %s is expected today.</p>",
+                            rs.getInt(1), esc(rs.getString(2)), esc(rs.getString(3)), esc(rs.getString(4))));
+                }
+                if (dueTodayCount == 0) s2.append("<p><font color='#15803d'>No returns scheduled for today.</font></p>");
+ 
+                // 3. Vehicles in Maintenance
+                StringBuilder s3 = new StringBuilder();
+                rs = stmt.executeQuery("SELECT vehicle_id, make, model, reg_number FROM vehicles WHERE status = 'Under Maintenance'");
+                int maintCount = 0;
+                while (rs.next()) {
+                    maintCount++;
+                    s3.append(String.format("<p><font color='#1d4ed8'><b>[-]</b></font> Vehicle ID <b>#%d</b> | %s %s (%s) is in workshop.</p>",
+                            rs.getInt(1), esc(rs.getString(2)), esc(rs.getString(3)), esc(rs.getString(4))));
+                }
+                if (maintCount == 0) s3.append("<p><font color='#15803d'>No vehicles currently in maintenance.</font></p>");
+ 
+                sb.append("<p><b>Summary:</b> <font color='#b91c1c'>").append(overdueCount).append(" overdue</font> &nbsp;|&nbsp; ")
+                        .append("<font color='#b45309'>").append(dueTodayCount).append(" due today</font> &nbsp;|&nbsp; ")
+                        .append("<font color='#1d4ed8'>").append(maintCount).append(" in maintenance</font></p>");
+ 
+                sb.append("<table width='100%' cellpadding='8' cellspacing='0'><tr><td bgcolor='#fee2e2'><font color='#b91c1c'><b>1. OVERDUE RENTALS</b></font> (Return Date Passed &amp; Still Active)</td></tr></table>");
+                sb.append(s1);
+                sb.append("<br><table width='100%' cellpadding='8' cellspacing='0'><tr><td bgcolor='#fef3c7'><font color='#b45309'><b>2. RETURNS DUE TODAY</b></font></td></tr></table>");
+                sb.append(s2);
+                sb.append("<br><table width='100%' cellpadding='8' cellspacing='0'><tr><td bgcolor='#dbeafe'><font color='#1d4ed8'><b>3. FLEET UNDER MAINTENANCE</b></font></td></tr></table>");
+                sb.append(s3);
+            } catch (SQLException ex) {
+                sb.append("<p><font color='#b91c1c'>Error loading alerts: ").append(esc(ex.getMessage())).append("</font></p>");
+            }
+            sb.append("</body></html>");
+            txtAlerts.setText(sb.toString());
+            txtAlerts.setCaretPosition(0);
+        };
+ 
+        btnRefresh.addActionListener(e -> refreshAlertsTab.run());
+ 
+        RoundedPanel card = new RoundedPanel(new BorderLayout(0, 10));
+        card.add(heading("Notification Center"), BorderLayout.NORTH);
+        card.add(scroll(txtAlerts), BorderLayout.CENTER);
+ 
+        panel.add(top, BorderLayout.NORTH);
+        panel.add(card, BorderLayout.CENTER);
+        refreshAlertsTab.run();
+        return panel;
+    }
+ 
+    // ==========================================
+    // 12. REPORTS PANEL
+    // ==========================================
+    private static JPanel createReportsPanel() {
+        JPanel panel = newPage();
+ 
+        JTextArea txtReport = new JTextArea("Select a report from the buttons above to generate it here.");
+        styleArea(txtReport, 12);
+ 
+        JButton btnRevenue = btn("Financial & Revenue Summary", PRIMARY);
+        JButton btnMaintExpense = btn("Maintenance Expenses Report", WARNING);
+        JButton btnAvailableFleet = btn("Current Fleet Status Report", SUCCESS);
+        JButton btnCopy = btn("Copy Report", NEUTRAL);
+ 
+        btnCopy.addActionListener(e -> {
+            Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new StringSelection(txtReport.getText()), null);
+            JOptionPane.showMessageDialog(panel, "Report copied to clipboard.");
+        });
+ 
+        btnRevenue.addActionListener(e -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append("============================== FINANCIAL & REVENUE REPORT ==============================\n");
+            sb.append(String.format("%-10s %-20s %-20s %-12s %-12s\n", "ID", "Customer", "Vehicle", "Status", "Amount (₹)"));
+            sb.append("----------------------------------------------------------------------------------------\n");
+ 
+            double total = 0;
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT r.rental_id, c.full_name, CONCAT(v.make, ' ', v.model), r.status, r.final_amount FROM rentals r JOIN customers c ON r.customer_id = c.customer_id JOIN vehicles v ON r.vehicle_id = v.vehicle_id")) {
+                while (rs.next()) {
+                    double amt = rs.getDouble(5);
+                    if ("Returned".equalsIgnoreCase(rs.getString(4))) total += amt;
+                    sb.append(String.format("%-10d %-20s %-20s %-12s %-12.2f\n", rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4), amt));
+                }
+                sb.append("----------------------------------------------------------------------------------------\n");
+                sb.append("Total Realized Revenue (Returned Only): ₹").append(String.format("%.2f", total)).append("\n");
+                txtReport.setText(sb.toString());
+                txtReport.setCaretPosition(0);
+            } catch (SQLException ex) {
+                txtReport.setText("Error generating report: " + ex.getMessage());
+            }
+        });
+ 
+        btnMaintExpense.addActionListener(e -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append("============================== MAINTENANCE EXPENSE REPORT ==============================\n");
+            sb.append(String.format("%-8s %-22s %-20s %-12s %-12s\n", "ID", "Vehicle", "Service Type", "Date", "Cost (₹)"));
+            sb.append("----------------------------------------------------------------------------------------\n");
+ 
+            double total = 0;
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT m.maintenance_id, CONCAT(v.make, ' ', v.model, ' (', v.reg_number, ')'), m.service_type, m.maintenance_date, m.cost FROM maintenance m JOIN vehicles v ON m.vehicle_id = v.vehicle_id")) {
+                while (rs.next()) {
+                    double cost = rs.getDouble(5);
+                    total += cost;
+                    sb.append(String.format("%-8d %-22s %-20s %-12s %-12.2f\n", rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4), cost));
+                }
+                sb.append("----------------------------------------------------------------------------------------\n");
+                sb.append("Total Maintenance Expenses: ₹").append(String.format("%.2f", total)).append("\n");
+                txtReport.setText(sb.toString());
+                txtReport.setCaretPosition(0);
+            } catch (SQLException ex) {
+                txtReport.setText("Error: " + ex.getMessage());
+            }
+        });
+ 
+        btnAvailableFleet.addActionListener(e -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append("================================ CURRENT FLEET STATUS ==================================\n");
+            sb.append(String.format("%-15s %-15s %-15s %-12s %-15s\n", "Reg No", "Make", "Model", "Rate/Day(₹)", "Status"));
+            sb.append("----------------------------------------------------------------------------------------\n");
+ 
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT reg_number, make, model, daily_rate, status FROM vehicles ORDER BY status ASC")) {
+                while (rs.next()) {
+                    sb.append(String.format("%-15s %-15s %-15s %-12.2f %-15s\n", rs.getString(1), rs.getString(2), rs.getString(3), rs.getDouble(4), rs.getString(5)));
+                }
+                txtReport.setText(sb.toString());
+                txtReport.setCaretPosition(0);
+            } catch (SQLException ex) {
+                txtReport.setText("Error: " + ex.getMessage());
+            }
+        });
+ 
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        buttons.setOpaque(false);
+        buttons.add(btnRevenue);
+        buttons.add(btnMaintExpense);
+        buttons.add(btnAvailableFleet);
+        buttons.add(btnCopy);
+ 
+        panel.add(buttons, BorderLayout.NORTH);
+        panel.add(tableCard("Report Output", txtReport), BorderLayout.CENTER);
+        return panel;
+    }
+ 
+    // ==========================================
+    // 13. STAFF MANAGEMENT PANEL (ADMIN ONLY)
+    // ==========================================
+    private static JPanel createStaffPanel() {
 }
