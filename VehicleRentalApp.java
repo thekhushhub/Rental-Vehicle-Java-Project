@@ -1945,4 +1945,137 @@ public class VehicleRentalApp {
     // 13. STAFF MANAGEMENT PANEL (ADMIN ONLY)
     // ==========================================
     private static JPanel createStaffPanel() {
+        JPanel panel = newPage();
+ 
+        DefaultTableModel model = new DefaultTableModel(new String[]{"User ID", "Username", "Full Name", "Role", "Status"}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) { return false; }
+        };
+        JTable table = makeTable(model);
+ 
+        JTextField txtUser = tf("");
+        JPasswordField txtPass = pf("");
+        JTextField txtName = tf("");
+        JComboBox<String> cmbRole = styleCombo(new JComboBox<>(new String[]{"Staff", "Admin"}));
+ 
+        JPanel form = buildForm(2,
+                "Username", txtUser, "Password", txtPass,
+                "Full Name", txtName, "Role", cmbRole);
+ 
+        JButton btnAdd = btn("Create User", SUCCESS);
+        JButton btnToggleStatus = btn("Toggle Active/Inactive", WARNING);
+ 
+        Runnable loadUsers = () -> {
+            model.setRowCount(0);
+            try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery("SELECT user_id, username, full_name, role, status FROM users")) {
+                while (rs.next()) {
+                    model.addRow(new Object[]{rs.getInt(1), rs.getString(2), rs.getString(3), rs.getString(4), rs.getString(5)});
+                }
+            } catch (SQLException ignored) {}
+        };
+ 
+        btnAdd.addActionListener(e -> {
+            String passText = new String(txtPass.getPassword()).trim();
+            if (txtUser.getText().trim().isEmpty() || passText.isEmpty()) {
+                JOptionPane.showMessageDialog(panel, "Username and password are required.");
+                return;
+            }
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("INSERT INTO users (username, password, full_name, role, status) VALUES (?, ?, ?, ?, 'Active')")) {
+                stmt.setString(1, txtUser.getText().trim());
+                stmt.setString(2, passText);
+                stmt.setString(3, txtName.getText().trim());
+                stmt.setString(4, cmbRole.getSelectedItem().toString());
+                stmt.executeUpdate();
+                loadUsers.run();
+                txtUser.setText(""); txtPass.setText(""); txtName.setText("");
+                JOptionPane.showMessageDialog(panel, "User created successfully.");
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error: " + ex.getMessage());
+            }
+        });
+ 
+        btnToggleStatus.addActionListener(e -> {
+            int row = table.getSelectedRow();
+            if (row == -1) return;
+            int userId = (int) model.getValueAt(row, 0);
+            String curStatus = model.getValueAt(row, 4).toString();
+            String newStatus = "Active".equalsIgnoreCase(curStatus) ? "Inactive" : "Active";
+ 
+            try (Connection conn = getConnection();
+                 PreparedStatement stmt = conn.prepareStatement("UPDATE users SET status = ? WHERE user_id = ?")) {
+                stmt.setString(1, newStatus);
+                stmt.setInt(2, userId);
+                stmt.executeUpdate();
+                loadUsers.run();
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error: " + ex.getMessage());
+            }
+        });
+ 
+        panel.add(formCard("Create New User", null, form, actionRow(btnAdd, btnToggleStatus)), BorderLayout.NORTH);
+        panel.add(tableCard("System Users", table), BorderLayout.CENTER);
+ 
+        loadUsers.run();
+        return panel;
+    }
+ 
+    // ==========================================
+    // 14. SYSTEM SETTINGS PANEL (ADMIN ONLY)
+    // ==========================================
+    private static JPanel createSettingsPanel() {
+        JPanel panel = newPage();
+ 
+        JTextField txtCompany = tf("");
+        JTextField txtTax = tf("");
+        JTextField txtLateFee = tf("");
+ 
+        JPanel form = buildForm(1,
+                "Company Name", txtCompany,
+                "Standard GST / Tax Rate (%)", txtTax,
+                "Default Late Fee Rate (₹/day)", txtLateFee);
+ 
+        JButton btnSave = btn("Save System Settings", PRIMARY);
+ 
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM system_settings")) {
+            while (rs.next()) {
+                String k = rs.getString(1);
+                String v = rs.getString(2);
+                if ("COMPANY_NAME".equals(k)) txtCompany.setText(v);
+                if ("TAX_PERCENTAGE".equals(k)) txtTax.setText(v);
+                if ("LATE_FEE_PER_DAY".equals(k)) txtLateFee.setText(v);
+            }
+        } catch (SQLException ignored) {}
+ 
+        btnSave.addActionListener(e -> {
+            try (Connection conn = getConnection()) {
+                PreparedStatement stmt = conn.prepareStatement("REPLACE INTO system_settings (setting_key, setting_value) VALUES (?, ?)");
+ 
+                stmt.setString(1, "COMPANY_NAME");
+                stmt.setString(2, txtCompany.getText().trim());
+                stmt.executeUpdate();
+ 
+                stmt.setString(1, "TAX_PERCENTAGE");
+                stmt.setString(2, txtTax.getText().trim());
+                stmt.executeUpdate();
+ 
+                stmt.setString(1, "LATE_FEE_PER_DAY");
+                stmt.setString(2, txtLateFee.getText().trim());
+                stmt.executeUpdate();
+ 
+                JOptionPane.showMessageDialog(panel, "System settings updated successfully.");
+            } catch (SQLException ex) {
+                JOptionPane.showMessageDialog(panel, "Error saving settings: " + ex.getMessage());
+            }
+        });
+ 
+        JPanel wrap = new JPanel(new BorderLayout());
+        wrap.setOpaque(false);
+        wrap.add(formCard("Business Configuration", null, form, actionRow(btnSave)), BorderLayout.NORTH);
+        panel.add(wrap, BorderLayout.CENTER);
+        return panel;
+    }
 }
+ 
